@@ -20,7 +20,7 @@ export default function GraficoBarras({ datos }: Props) {
         <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
         <XAxis dataKey="nivel" tick={{ fontSize: 12 }} />
         <YAxis tickFormatter={v => `${(v / 1000000).toFixed(1)}M`} tick={{ fontSize: 12 }} />
-        <Tooltip formatter={(v: number) => v.toLocaleString("es-AR")} />
+        <Tooltip formatter={(v: any) => typeof v === "number" ? v.toLocaleString("es-AR") : v} />
         <Legend />
         <Bar dataKey="Estatal" fill="#1d4ed8" radius={[4, 4, 0, 0]} />
         <Bar dataKey="Privado" fill="#7c3aed" radius={[4, 4, 0, 0]} />
