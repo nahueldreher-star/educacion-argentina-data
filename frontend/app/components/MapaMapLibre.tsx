@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import { useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -41,7 +41,35 @@ const NOMBRE_INVERSO: Record<string, string> = Object.fromEntries(
   Object.entries(NOMBRE_MAP).map(([k, v]) => [v, k])
 );
 
-const getColor = (valor: number, metrica: string, minVal: number, maxVal: number): string => {
+const INDICADORES = ["REP", "ABN", "SOB"];
+
+function esIndicador(metrica: string): boolean {
+  return INDICADORES.includes(metrica);
+}
+
+const getColor = (valor: number | undefined, metrica: string, minVal: number, maxVal: number): string => {
+  if (valor === undefined || valor === null) return "#cbd5e1";
+
+  // Escala divergente para indicadores: azul marino (negativo) → gris (cero) → rojo (positivo)
+  if (esIndicador(metrica)) {
+    if (valor < 0) {
+      const norm = Math.min(Math.abs(valor) / Math.max(Math.abs(minVal), 0.01), 1);
+      if (norm < 0.25) return "#94a3b8";
+      if (norm < 0.50) return "#6096ba";
+      if (norm < 0.75) return "#2d6a9f";
+      return "#1a3a6b";
+    }
+    if (valor === 0) return "#e2e8f0";
+    const norm = Math.min(valor / Math.max(maxVal, 0.01), 1);
+    if (norm < 0.15) return "#fecaca";
+    if (norm < 0.30) return "#f87171";
+    if (norm < 0.50) return "#ef4444";
+    if (norm < 0.70) return "#dc2626";
+    if (norm < 0.85) return "#b91c1c";
+    return "#7f1d1d";
+  }
+
+  // Escala azul para matrícula
   if (!valor) return "#cbd5e1";
   if (metrica === "pct_privado") {
     if (valor < 15) return "#dbeafe";
@@ -97,7 +125,6 @@ export default function MapaMapLibre({ datos, metrica, onProvinciaClick, provinc
         data: geojson,
       });
 
-      // Capa fill
       map.current!.addLayer({
         id: "provincias-fill",
         type: "fill",
@@ -108,7 +135,6 @@ export default function MapaMapLibre({ datos, metrica, onProvinciaClick, provinc
         }
       });
 
-      // Borde blanco entre provincias
       map.current!.addLayer({
         id: "provincias-border",
         type: "line",
@@ -119,7 +145,6 @@ export default function MapaMapLibre({ datos, metrica, onProvinciaClick, provinc
         }
       });
 
-      // Borde azul para provincia seleccionada
       map.current!.addLayer({
         id: "provincias-selected",
         type: "line",
@@ -131,7 +156,6 @@ export default function MapaMapLibre({ datos, metrica, onProvinciaClick, provinc
         filter: ["==", ["get", "nam"], ""]
       });
 
-      // CABA — capa de punto con etiqueta nativa
       map.current!.addSource("caba-point", {
         type: "geojson",
         data: {
@@ -174,7 +198,6 @@ export default function MapaMapLibre({ datos, metrica, onProvinciaClick, provinc
         }
       });
 
-      // Click en provincias
       map.current!.on("click", "provincias-fill", (e) => {
         const nombre_ign = e.features?.[0]?.properties?.nam;
         if (nombre_ign) {
@@ -183,12 +206,10 @@ export default function MapaMapLibre({ datos, metrica, onProvinciaClick, provinc
         }
       });
 
-      // Click en CABA
       map.current!.on("click", "caba-circle", () => {
         onProvinciaClick("Ciudad de Buenos Aires");
       });
 
-      // Cursores
       ["provincias-fill", "caba-circle"].forEach(layer => {
         map.current!.on("mouseenter", layer, () => {
           map.current!.getCanvas().style.cursor = "pointer";
@@ -210,9 +231,9 @@ export default function MapaMapLibre({ datos, metrica, onProvinciaClick, provinc
   useEffect(() => {
     if (!map.current || !listo) return;
 
-    const valores = Object.values(datos).filter(v => v > 0);
-    const maxVal = Math.max(...valores, 1);
-    const minVal = Math.min(...valores, 0);
+    const valores = Object.values(datos).filter(v => v !== undefined && v !== null) as number[];
+    const maxVal = valores.length ? Math.max(...valores) : 1;
+    const minVal = valores.length ? Math.min(...valores) : 0;
 
     const colorExpression: any[] = ["match", ["get", "nam"]];
     Object.entries(datos).forEach(([nombre_api, valor]) => {
@@ -223,9 +244,8 @@ export default function MapaMapLibre({ datos, metrica, onProvinciaClick, provinc
 
     map.current.setPaintProperty("provincias-fill", "fill-color", colorExpression);
 
-    // Color del círculo de CABA
     const colorCaba = getColor(
-      datos["Ciudad de Buenos Aires"] || 0,
+      datos["Ciudad de Buenos Aires"],
       metrica, minVal, maxVal
     );
     map.current.setPaintProperty("caba-circle", "circle-color", colorCaba);

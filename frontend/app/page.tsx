@@ -1,36 +1,64 @@
 import { getResumenNacional } from "./lib/api";
-import ResumenCards from "./components/ResumenCards";
 import MapaExplorador from "./components/MapaExplorador";
-import { Database, Code, Download, ArrowRight } from "lucide-react";
+import { ArrowRight, Code, Database, Download } from "lucide-react";
+
+const SUBPROVINCIALES = ["GBA - Conurbano", "GBA - Resto Provincia"];
+
+async function getIndicadoresNacionales() {
+  const BASE = "https://educacion-argentina-api.onrender.com/api/v1";
+  try {
+    const [sobSec, repSec, abnSec] = await Promise.all([
+      fetch(`${BASE}/indicadores?indicador=SOB&nivel=SEC&anio=2024&anio_estudio=Total&limit=500`, { next: { revalidate: 3600 } }).then(r => r.json()),
+      fetch(`${BASE}/indicadores?indicador=REP&nivel=SEC&anio=2024&anio_estudio=Total&limit=500`, { next: { revalidate: 3600 } }).then(r => r.json()),
+      fetch(`${BASE}/indicadores?indicador=ABN&nivel=SEC&anio=2024&anio_estudio=Total&limit=500`, { next: { revalidate: 3600 } }).then(r => r.json()),
+    ]);
+
+    const promedio = (datos: { jurisdiccion: string; valor: number }[]) => {
+      const filtrados = datos.filter(d => !SUBPROVINCIALES.includes(d.jurisdiccion));
+      return filtrados.reduce((acc, d) => acc + d.valor, 0) / filtrados.length;
+    };
+
+    return {
+      sobSecPromedio: promedio(sobSec.datos),
+      repSecPromedio: promedio(repSec.datos),
+      abnSecPromedio: promedio(abnSec.datos),
+      repSecMax: Math.max(...repSec.datos.filter((d: { jurisdiccion: string }) => !SUBPROVINCIALES.includes(d.jurisdiccion)).map((d: { valor: number }) => d.valor)),
+    };
+  } catch {
+    return null;
+  }
+}
 
 export default async function Home() {
-  let resumen = null;
-  try {
-    resumen = await getResumenNacional(2025);
-  } catch (e) {
-    console.error(e);
-  }
+  const [resumen, indicadores] = await Promise.all([
+    getResumenNacional(2025).catch(() => null),
+    getIndicadoresNacionales(),
+  ]);
+
+  const sobPct = indicadores ? Math.round(indicadores.sobSecPromedio) : 22;
+  const abnPct = indicadores ? indicadores.abnSecPromedio.toFixed(1) : "8.1";
+  const repMax = indicadores ? indicadores.repSecMax.toFixed(1) : "15.8";
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-white">
 
       {/* HERO */}
-      <section className="bg-white border-b border-slate-100 py-20 px-4">
+      <section className="border-b border-slate-100 py-20 px-4">
         <div className="max-w-7xl mx-auto">
           <div className="max-w-3xl">
             <div className="inline-flex items-center gap-2 bg-blue-50 text-blue-700 text-xs font-semibold px-3 py-1.5 rounded-full mb-6">
               <span className="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
-              Version 1.0 · Anuario Estadístico 2025
+              Datos del Ministerio de Educación · Anuario 2024
             </div>
             <h1 className="text-5xl md:text-6xl font-bold text-slate-900 leading-tight mb-6">
               El sistema educativo<br />
               <span style={{ color: "#1a3a6b" }}>argentino</span>, en datos.
             </h1>
-            <p className="text-xl text-slate-500 leading-relaxed mb-8 max-w-2xl">
-              Una plataforma abierta para explorar matrícula por provincia, nivel y sector.
-              Datos del Ministerio de Educación de la Nación — con API pública para investigadores y desarrolladores.
+            <p className="text-xl text-slate-500 leading-relaxed mb-10 max-w-2xl">
+              Una plataforma abierta para entender qué pasa dentro de las escuelas argentinas.
+              Matrícula, repitencia, abandono y sobreedad por provincia, nivel y año.
             </p>
-            <div className="flex flex-wrap gap-3">
+            <div className="flex flex-wrap gap-3 mb-12">
               <a
                 href="#mapa"
                 className="inline-flex items-center gap-2 px-6 py-3 text-sm font-semibold text-white rounded-xl transition-all hover:opacity-90"
@@ -47,56 +75,64 @@ export default async function Home() {
                 Ver API
               </a>
             </div>
+
+            {/* Tres datos impactantes */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="border-l-4 border-red-500 pl-4 py-1">
+                <p className="text-3xl font-bold text-slate-900">1 de cada {Math.round(100 / sobPct)}</p>
+                <p className="text-sm text-slate-500 mt-1 leading-snug">alumnos de secundaria tiene sobreedad — va atrasado respecto a su edad teórica</p>
+                <p className="text-xs text-slate-400 mt-2">Promedio nacional · 2024</p>
+              </div>
+              <div className="border-l-4 border-orange-400 pl-4 py-1">
+                <p className="text-3xl font-bold text-slate-900">{abnPct}%</p>
+                <p className="text-sm text-slate-500 mt-1 leading-snug">de los alumnos de secundaria no vuelve al año siguiente</p>
+                <p className="text-xs text-slate-400 mt-2">Promedio nacional · 2024</p>
+              </div>
+              <div className="border-l-4 border-amber-400 pl-4 py-1">
+                <p className="text-3xl font-bold text-slate-900">{repMax}%</p>
+                <p className="text-sm text-slate-500 mt-1 leading-snug">de repitencia en secundaria en la provincia con peor indicador del país</p>
+                <p className="text-xs text-slate-400 mt-2">Dato provincial máximo · 2024</p>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* STATS */}
+      {/* CONTEXTO — matrícula total */}
       {resumen && (
-        <section className="bg-slate-50 border-b border-slate-100 py-12 px-4">
+        <section className="bg-slate-50 border-b border-slate-100 py-10 px-4">
           <div className="max-w-7xl mx-auto">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-4">El sistema en números · 2025</p>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-              <div>
-                <p className="text-3xl font-bold text-slate-900">{resumen.total_sistema.toLocaleString("es-AR")}</p>
-                <p className="text-sm text-slate-500 mt-1">alumnos en el sistema</p>
-              </div>
-              <div>
-                <p className="text-3xl font-bold text-slate-900">24</p>
-                <p className="text-sm text-slate-500 mt-1">jurisdicciones</p>
-              </div>
-              <div>
-                <p className="text-3xl font-bold text-slate-900">4</p>
-                <p className="text-sm text-slate-500 mt-1">niveles educativos</p>
-              </div>
-              <div>
-                <p className="text-3xl font-bold" style={{ color: "#10b981" }}>Abierto</p>
-                <p className="text-sm text-slate-500 mt-1">acceso libre y gratuito</p>
-              </div>
+              {resumen.datos
+                .filter((d: { nivel: string; sector: string }) => d.sector === "Estatal" || d.sector === "Privado")
+                .reduce((acc: { nivel: string; total: number }[], d: { nivel: string; total_alumnos: number }) => {
+                  const existing = acc.find(a => a.nivel === d.nivel);
+                  if (existing) existing.total += d.total_alumnos;
+                  else acc.push({ nivel: d.nivel, total: d.total_alumnos });
+                  return acc;
+                }, [])
+                .map((d: { nivel: string; total: number }) => (
+                  <div key={d.nivel}>
+                    <p className="text-2xl font-bold text-slate-900">{d.total.toLocaleString("es-AR")}</p>
+                    <p className="text-sm text-slate-500 mt-1">{d.nivel.replace("Educacion ", "")}</p>
+                  </div>
+                ))
+              }
             </div>
-          </div>
-        </section>
-      )}
-
-      {/* MATRICULA POR NIVEL */}
-      {resumen && (
-        <section className="py-16 px-4 bg-white">
-          <div className="max-w-7xl mx-auto">
-            <div className="mb-8">
-              <h2 className="text-2xl font-bold text-slate-900">Matrícula 2025 por nivel</h2>
-              <p className="text-slate-500 mt-1 text-sm">Total del sistema educativo. Excluye doble conteo de subregiones.</p>
-            </div>
-            <ResumenCards datos={resumen.datos} total={resumen.total_sistema} />
+            <p className="text-xs text-slate-400 mt-4">Fuente: Ministerio de Educación de la Nación. Excluye doble conteo de subregiones.</p>
           </div>
         </section>
       )}
 
       {/* MAPA INTERACTIVO */}
-      <section id="mapa" className="py-16 px-4 bg-slate-50 border-t border-slate-100">
+      <section id="mapa" className="py-16 px-4 bg-white border-t border-slate-100">
         <div className="max-w-7xl mx-auto">
           <div className="mb-8">
-            <h2 className="text-2xl font-bold text-slate-900">Mapa interactivo</h2>
-            <p className="text-slate-500 mt-1 text-sm">
-              Seleccioná una dimensión de análisis y hacé clic en una provincia para ver el detalle.
+            <h2 className="text-2xl font-bold text-slate-900">¿Dónde se pierde la escuela argentina?</h2>
+            <p className="text-slate-500 mt-2 text-sm max-w-2xl">
+              Explorá repitencia, abandono y sobreedad por provincia y nivel educativo.
+              Hacé clic en una provincia para ver el detalle.
             </p>
           </div>
           <MapaExplorador />
@@ -104,16 +140,17 @@ export default async function Home() {
       </section>
 
       {/* ACCESO A DATOS */}
-      <section id="api" className="py-16 px-4 bg-white border-t border-slate-100">
+      <section id="api" className="py-16 px-4 bg-slate-50 border-t border-slate-100">
         <div className="max-w-7xl mx-auto">
           <div className="mb-10">
             <h2 className="text-2xl font-bold text-slate-900">Accedé a los datos</h2>
             <p className="text-slate-500 mt-1 text-sm max-w-xl">
-              Todos los datos están disponibles via API REST pública y código abierto para que investigadores, periodistas y desarrolladores puedan construir sobre esta base.
+              Todos los datos están disponibles via API REST pública y código abierto para que investigadores,
+              periodistas y desarrolladores puedan construir sobre esta base.
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            <div className="border border-slate-200 rounded-2xl p-6 hover:border-blue-200 hover:shadow-sm transition-all group">
+            <div className="border border-slate-200 rounded-2xl p-6 hover:border-blue-200 hover:shadow-sm transition-all bg-white">
               <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center mb-4">
                 <Database size={20} className="text-blue-600" />
               </div>
@@ -129,7 +166,7 @@ export default async function Home() {
                 Ver documentación <ArrowRight size={14} />
               </a>
             </div>
-            <div className="border border-slate-200 rounded-2xl p-6 hover:border-blue-200 hover:shadow-sm transition-all group">
+            <div className="border border-slate-200 rounded-2xl p-6 hover:border-blue-200 hover:shadow-sm transition-all bg-white">
               <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center mb-4">
                 <Code size={20} className="text-slate-600" />
               </div>
@@ -145,16 +182,16 @@ export default async function Home() {
                 Ver repositorio <ArrowRight size={14} />
               </a>
             </div>
-            <div className="border border-slate-200 rounded-2xl p-6 hover:border-blue-200 hover:shadow-sm transition-all group">
+            <div className="border border-slate-200 rounded-2xl p-6 hover:border-blue-200 hover:shadow-sm transition-all bg-white">
               <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center mb-4">
                 <Download size={20} className="text-emerald-600" />
               </div>
-              <h3 className="font-semibold text-slate-900 mb-2">Granularidad única</h3>
+              <h3 className="font-semibold text-slate-900 mb-2">Serie histórica</h3>
               <p className="text-slate-500 text-sm mb-4 leading-relaxed">
-                GBA Conurbano y Resto de Buenos Aires como registros separados. Detalle subprovincial disponible en la API.
+                Datos desde 2007 hasta 2025. Matrícula, repitencia, abandono, sobreedad y establecimientos por jurisdicción.
               </p>
               <a
-                href="https://educacion-argentina-api.onrender.com/api/v1/matricula?incluir_subprovincial=true&anio=2025"
+                href="https://educacion-argentina-api.onrender.com/api/v1/indicadores?indicador=SOB&nivel=SEC&anio_estudio=Total&limit=500"
                 target="_blank"
                 className="inline-flex items-center gap-1 text-sm font-semibold text-emerald-600 hover:text-emerald-800 transition-colors"
               >
