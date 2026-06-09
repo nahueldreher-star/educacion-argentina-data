@@ -6,12 +6,6 @@ import PanelProvincia from "./PanelProvincia";
 
 const MapaMapLibre = dynamic(() => import("./MapaMapLibre"), { ssr: false });
 
-const METRICAS_MATRICULA = [
-  { value: "total", label: "Total alumnos" },
-  { value: "estatal", label: "Estatal" },
-  { value: "privado", label: "Privado" },
-];
-
 const METRICAS_INDICADORES = [
   {
     value: "SOB",
@@ -28,6 +22,12 @@ const METRICAS_INDICADORES = [
     label: "Abandono",
     descripcion: "Porcentaje de alumnos que no se matriculan al año siguiente. Valores negativos indican entrada neta de alumnos, posiblemente por migración interna. Fuente: Ministerio de Educación de la Nación.",
   },
+];
+
+const METRICAS_MATRICULA = [
+  { value: "total", label: "Total alumnos" },
+  { value: "estatal", label: "Estatal" },
+  { value: "privado", label: "Privado" },
 ];
 
 const NIVELES = [
@@ -57,7 +57,6 @@ export default function MapaExplorador() {
   const anioEfectivo = esIndicador(metrica) && metrica !== "SOB" && anio === 2025 ? 2024 : anio;
   const mostrarAvisoAnio = esIndicador(metrica) && metrica !== "SOB" && anio === 2025;
 
-  // Siempre cargar matrícula para el panel
   useEffect(() => {
     const fetchMatricula = async () => {
       try {
@@ -70,7 +69,6 @@ export default function MapaExplorador() {
     fetchMatricula();
   }, [anio, nivel]);
 
-  // Cargar datos para el mapa según métrica
   useEffect(() => {
     const fetchMapa = async () => {
       setLoadingMapa(true);
@@ -92,12 +90,10 @@ export default function MapaExplorador() {
     fetchMapa();
   }, [metrica, nivel, anioEfectivo]);
 
-  // También actualizar loading para métricas de matrícula
   useEffect(() => {
     if (!esIndicador(metrica)) setLoadingMapa(false);
   }, [metrica]);
 
-  // Construir datos para el mapa
   const datosMapa: Record<string, number> = {};
   if (esIndicador(metrica)) {
     datosIndicador
@@ -135,9 +131,10 @@ export default function MapaExplorador() {
                 }}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                   metrica === m.value
-                    ? "bg-red-700 text-white shadow-sm"
+                    ? "text-white shadow-sm"
                     : "bg-gray-100 text-gray-600 hover:bg-gray-200"
                 }`}
+                style={metrica === m.value ? { background: "#6d28d9" } : {}}
               >
                 {m.label}
               </button>
@@ -166,7 +163,7 @@ export default function MapaExplorador() {
           <div>
             <label className="block text-xs font-medium text-slate-400 mb-2 uppercase tracking-wide">Nivel</label>
             <select
-              className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
               value={nivel}
               onChange={e => setNivel(e.target.value)}
             >
@@ -176,7 +173,7 @@ export default function MapaExplorador() {
           <div>
             <label className="block text-xs font-medium text-slate-400 mb-2 uppercase tracking-wide">Año</label>
             <select
-              className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
               value={anio}
               onChange={e => setAnio(Number(e.target.value))}
             >
@@ -188,7 +185,7 @@ export default function MapaExplorador() {
 
       {mostrarAvisoAnio && (
         <div className="mb-4 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
-          <strong>Nota:</strong> {metrica === "REP" ? "Repitencia" : "Abandono"} no está disponible para 2025 porque requiere datos del año siguiente. Se muestra 2024.
+          <strong>Nota:</strong> {metrica === "REP" ? "Repitencia" : "Abandono"} no está disponible para 2025. Se muestra 2024.
         </div>
       )}
 
@@ -198,23 +195,23 @@ export default function MapaExplorador() {
         </div>
       )}
 
-      {/* Leyenda */}
+      {/* Leyenda dinámica */}
       <div className="flex items-center gap-3 mb-4">
         {esIndicador(metrica) ? (
           <>
-            <span className="text-xs text-gray-400">Entrada neta</span>
+            <span className="text-xs text-gray-400">Menor</span>
             <div className="flex gap-0.5">
-              {["#1a3a6b","#2d6a9f","#6096ba","#94a3b8","#e2e8f0","#fecaca","#f87171","#ef4444","#b91c1c","#7f1d1d"].map(c => (
-                <div key={c} className="w-5 h-3 rounded-sm" style={{ backgroundColor: c }} />
+              {["#ede9fe","#c4b5fd","#a78bfa","#7c3aed","#6d28d9","#5b21b6","#4c1d95"].map(c => (
+                <div key={c} className="w-6 h-3 rounded-sm" style={{ backgroundColor: c }} />
               ))}
             </div>
-            <span className="text-xs text-gray-400">Mayor pérdida</span>
+            <span className="text-xs text-gray-400">Mayor</span>
           </>
         ) : (
           <>
             <span className="text-xs text-gray-400">Menor</span>
             <div className="flex gap-0.5">
-              {["#eff6ff","#dbeafe","#bfdbfe","#93c5fd","#60a5fa","#3b82f6","#1d4ed8","#1e3a8a"].map(c => (
+              {["#dbeafe","#93c5fd","#60a5fa","#3b82f6","#2563eb","#1d4ed8","#1e3a8a"].map(c => (
                 <div key={c} className="w-6 h-3 rounded-sm" style={{ backgroundColor: c }} />
               ))}
             </div>
@@ -245,6 +242,7 @@ export default function MapaExplorador() {
             datos={datosMatricula}
             anio={anio}
             nivel={nivel}
+            metricaActiva={metrica}
             onCerrar={() => setProvinciaSeleccionada(null)}
           />
         </div>

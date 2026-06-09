@@ -8,6 +8,7 @@ interface Props {
   datos: MatriculaItem[];
   anio: number;
   nivel: string;
+  metricaActiva: string;
   onCerrar: () => void;
 }
 
@@ -17,85 +18,8 @@ interface IndicadorData {
   valor: number;
 }
 
-interface IndicadoresProvincia {
-  SOB: number | null;
-  REP: number | null;
-  ABN: number | null;
-}
-
-interface PromediosNacionales {
-  SOB: number | null;
-  REP: number | null;
-  ABN: number | null;
-}
-
 const SUBPROVINCIALES = ["GBA - Conurbano", "GBA - Resto Provincia"];
 const API_BASE = "https://educacion-argentina-api.onrender.com/api/v1";
-
-function unoDeCada(pct: number): string {
-  if (pct <= 0) return "—";
-  const n = Math.round(100 / pct);
-  return `1 de cada ${n}`;
-}
-
-function NarrativaIndicador({
-  label,
-  valor,
-  promedio,
-  descripcion,
-  esNacional = false,
-}: {
-  label: string;
-  valor: number | null;
-  promedio: number | null;
-  descripcion: string;
-  esNacional?: boolean;
-}) {
-  if (valor === null) return (
-    <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
-      <p className="text-xs font-medium text-slate-400">{label}</p>
-      <p className="text-xs text-slate-400 italic mt-1">Sin datos para esta selección</p>
-    </div>
-  );
-
-  const esNegativo = valor < 0;
-  const colorValor = esNegativo ? "text-blue-700"
-    : promedio && valor > promedio * 1.2 ? "text-red-600"
-    : promedio && valor > promedio ? "text-orange-500"
-    : "text-emerald-600";
-
-  const diff = promedio !== null ? valor - promedio : null;
-  const diffAbs = diff !== null ? Math.abs(diff).toFixed(1) : null;
-
-  return (
-    <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
-      <p className="text-xs font-medium text-slate-500 mb-2">{label}</p>
-      {esNegativo ? (
-        <>
-          <p className="text-xl font-bold text-blue-700">{valor.toFixed(1)}%</p>
-          <p className="text-xs text-blue-600 mt-1 leading-snug">
-            Entrada neta de alumnos — posiblemente por migración interna
-          </p>
-        </>
-      ) : (
-        <>
-          <p className={`text-xl font-bold ${colorValor}`}>{unoDeCada(valor)} alumnos</p>
-          <p className="text-xs text-slate-400 mt-0.5">{valor.toFixed(1)}% del total</p>
-          {!esNacional && diff !== null && diffAbs && (
-            <p className={`text-xs mt-1 ${diff > 0.5 ? "text-red-500" : diff < -0.5 ? "text-emerald-600" : "text-slate-400"}`}>
-              {Math.abs(diff) < 0.5
-                ? "Similar al promedio nacional"
-                : diff > 0
-                ? `${diffAbs}pp por encima del promedio nacional (${promedio?.toFixed(1)}%)`
-                : `${diffAbs}pp por debajo del promedio nacional (${promedio?.toFixed(1)}%)`}
-            </p>
-          )}
-        </>
-      )}
-      <p className="text-xs text-slate-400 mt-2 leading-snug border-t border-slate-100 pt-2">{descripcion}</p>
-    </div>
-  );
-}
 
 const NIVEL_COLOR: Record<string, string> = {
   "Educacion Inicial": "bg-amber-100 text-amber-800",
@@ -105,78 +29,66 @@ const NIVEL_COLOR: Record<string, string> = {
 };
 
 const NIVEL_API: Record<string, string> = {
-  "": "",
-  "INI": "INI",
-  "PRI": "PRI",
-  "SEC": "SEC",
-  "SUP": "SUP",
+  "": "SEC", "INI": "INI", "PRI": "PRI", "SEC": "SEC", "SUP": "SUP",
 };
 
-export default function PanelProvincia({ provincia, datos, anio, nivel, onCerrar }: Props) {
+const INDICADOR_INFO: Record<string, { label: string; descripcion: string }> = {
+  SOB: { label: "Sobreedad", descripcion: "Alumnos que van atrasados respecto a la edad teórica para su año de estudio." },
+  REP: { label: "Repitencia", descripcion: "Alumnos que repiten el año por no haber alcanzado los aprendizajes mínimos." },
+  ABN: { label: "Abandono interanual", descripcion: "Alumnos que no vuelven a matricularse al año siguiente. Fuente: Ministerio de Educación." },
+};
+
+function unoDeCada(pct: number): string {
+  if (pct <= 0) return "—";
+  return `1 de cada ${Math.round(100 / pct)}`;
+}
+
+function esIndicador(metrica: string): boolean {
+  return ["REP", "ABN", "SOB"].includes(metrica);
+}
+
+export default function PanelProvincia({ provincia, datos, anio, nivel, metricaActiva, onCerrar }: Props) {
   const esNacional = !provincia;
-  const [indicadoresProv, setIndicadoresProv] = useState<IndicadoresProvincia | null>(null);
-  const [promediosNac, setPromediosNac] = useState<PromediosNacionales | null>(null);
+  const [valorIndicador, setValorIndicador] = useState<number | null>(null);
+  const [promedioNacional, setPromedioNacional] = useState<number | null>(null);
   const [loadingInd, setLoadingInd] = useState(false);
 
   const anioIndicadores = anio > 2024 ? 2024 : anio;
   const nivelParam = NIVEL_API[nivel] || "SEC";
+  const nivelLabel: Record<string, string> = {
+    "": "todos los niveles", "INI": "inicial", "PRI": "primaria",
+    "SEC": "secundaria", "SUP": "superior no universitario"
+  };
 
   useEffect(() => {
+    if (!esIndicador(metricaActiva)) return;
     setLoadingInd(true);
-    setIndicadoresProv(null);
-    setPromediosNac(null);
+    setValorIndicador(null);
+    setPromedioNacional(null);
 
-    const fetchIndicadores = async () => {
-      try {
-        const fetchInd = (ind: string) =>
-          fetch(`${API_BASE}/indicadores?indicador=${ind}&nivel=${nivelParam}&anio=${anioIndicadores}&anio_estudio=Total&limit=500`)
-            .then(r => r.json());
-
-        const [sob, rep, abn] = await Promise.all([
-          fetchInd("SOB"),
-          fetchInd("REP"),
-          fetchInd("ABN"),
-        ]);
-
-        const get = (res: { datos: IndicadorData[] }, jur: string) =>
-          res.datos.find(d => d.jurisdiccion === jur && d.anio_estudio === "Total")?.valor ?? null;
-
-        const promedio = (res: { datos: IndicadorData[] }) => {
-          const filtrados = res.datos.filter(d =>
-            !SUBPROVINCIALES.includes(d.jurisdiccion) && d.anio_estudio === "Total"
-          );
-          if (!filtrados.length) return null;
-          return filtrados.reduce((acc, d) => acc + d.valor, 0) / filtrados.length;
-        };
-
-        setPromediosNac({
-          SOB: promedio(sob),
-          REP: promedio(rep),
-          ABN: promedio(abn),
-        });
+    fetch(`${API_BASE}/indicadores?indicador=${metricaActiva}&nivel=${nivelParam}&anio=${anioIndicadores}&anio_estudio=Total&limit=500`)
+      .then(r => r.json())
+      .then(res => {
+        const filtrados = res.datos.filter((d: IndicadorData) =>
+          !SUBPROVINCIALES.includes(d.jurisdiccion) && d.anio_estudio === "Total"
+        );
+        const promedio = filtrados.length
+          ? filtrados.reduce((acc: number, d: IndicadorData) => acc + d.valor, 0) / filtrados.length
+          : null;
+        setPromedioNacional(promedio);
 
         if (!esNacional && provincia && !SUBPROVINCIALES.includes(provincia)) {
-          setIndicadoresProv({
-            SOB: get(sob, provincia),
-            REP: get(rep, provincia),
-            ABN: get(abn, provincia),
-          });
+          const fila = res.datos.find((d: IndicadorData) =>
+            d.jurisdiccion === provincia && d.anio_estudio === "Total"
+          );
+          setValorIndicador(fila?.valor ?? null);
         } else if (esNacional) {
-          setIndicadoresProv({
-            SOB: promedio(sob),
-            REP: promedio(rep),
-            ABN: promedio(abn),
-          });
+          setValorIndicador(promedio);
         }
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLoadingInd(false);
-      }
-    };
-
-    fetchIndicadores();
-  }, [provincia, anioIndicadores, nivelParam, esNacional]);
+      })
+      .catch(console.error)
+      .finally(() => setLoadingInd(false));
+  }, [provincia, metricaActiva, anioIndicadores, nivelParam, esNacional]);
 
   const datosFiltrados = esNacional
     ? datos.filter(d => d.granularidad === "PROVINCIAL")
@@ -188,10 +100,7 @@ export default function PanelProvincia({ provincia, datos, anio, nivel, onCerrar
   const pctPrivado = total > 0 ? ((totalPrivado / total) * 100).toFixed(1) : "0";
   const niveles = [...new Set(datosFiltrados.map(d => d.nivel))];
 
-  const nivelLabel: Record<string, string> = {
-    "": "todos los niveles",
-    "INI": "inicial", "PRI": "primaria", "SEC": "secundaria", "SUP": "superior no universitario"
-  };
+  const diff = valorIndicador !== null && promedioNacional !== null ? valorIndicador - promedioNacional : null;
 
   return (
     <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm h-full overflow-y-auto max-h-[680px]">
@@ -215,46 +124,51 @@ export default function PanelProvincia({ provincia, datos, anio, nivel, onCerrar
         )}
       </div>
 
-      {/* BLOQUE A — Indicadores */}
-      {!SUBPROVINCIALES.includes(provincia ?? "") && (
+      {/* BLOQUE A — Indicador activo (solo si es indicador) */}
+      {esIndicador(metricaActiva) && !SUBPROVINCIALES.includes(provincia ?? "") && (
         <div className="mb-5">
           <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">
-            Trayectoria escolar · {anioIndicadores}{anio > 2024 ? " (último dato disponible)" : ""}
+            {INDICADOR_INFO[metricaActiva]?.label} · {anioIndicadores}
+            {anio > 2024 ? " (último dato disponible)" : ""}
           </p>
           {loadingInd ? (
-            <div className="h-20 flex items-center justify-center text-slate-400 text-sm">
-              Cargando indicadores...
-            </div>
+            <div className="h-16 flex items-center justify-center text-slate-400 text-sm">Cargando...</div>
+          ) : valorIndicador === null ? (
+            <p className="text-sm text-slate-400 italic">Sin datos para esta selección</p>
           ) : (
-            <div className="space-y-2">
-              <NarrativaIndicador
-                label="Sobreedad"
-                valor={indicadoresProv?.SOB ?? null}
-                promedio={esNacional ? null : promediosNac?.SOB ?? null}
-                descripcion="Alumnos que van atrasados respecto a la edad teórica para su año de estudio."
-                esNacional={esNacional}
-              />
-              <NarrativaIndicador
-                label="Repitencia"
-                valor={indicadoresProv?.REP ?? null}
-                promedio={esNacional ? null : promediosNac?.REP ?? null}
-                descripcion="Alumnos que repiten el año por no haber alcanzado los aprendizajes mínimos."
-                esNacional={esNacional}
-              />
-              <NarrativaIndicador
-                label="Abandono interanual"
-                valor={indicadoresProv?.ABN ?? null}
-                promedio={esNacional ? null : promediosNac?.ABN ?? null}
-                descripcion="Alumnos que no vuelven a matricularse al año siguiente. Fuente: Ministerio de Educación."
-                esNacional={esNacional}
-              />
+            <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
+              {valorIndicador < 0 ? (
+                <>
+                  <p className="text-2xl font-bold text-blue-700">{valorIndicador.toFixed(1)}%</p>
+                  <p className="text-xs text-blue-600 mt-1">Entrada neta de alumnos — posiblemente por migración interna</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-3xl font-bold" style={{ color: "#6d28d9" }}>
+                    {unoDeCada(valorIndicador)} alumnos
+                  </p>
+                  <p className="text-sm text-slate-500 mt-1">{valorIndicador.toFixed(1)}% del total</p>
+                  {!esNacional && diff !== null && (
+                    <p className={`text-xs mt-2 ${Math.abs(diff) < 0.5 ? "text-slate-400" : diff > 0 ? "text-red-500" : "text-emerald-600"}`}>
+                      {Math.abs(diff) < 0.5
+                        ? "Similar al promedio nacional"
+                        : diff > 0
+                        ? `${diff.toFixed(1)}pp por encima del promedio (${promedioNacional?.toFixed(1)}%)`
+                        : `${Math.abs(diff).toFixed(1)}pp por debajo del promedio (${promedioNacional?.toFixed(1)}%)`}
+                    </p>
+                  )}
+                </>
+              )}
+              <p className="text-xs text-slate-400 mt-3 pt-2 border-t border-slate-100 leading-snug">
+                {INDICADOR_INFO[metricaActiva]?.descripcion}
+              </p>
             </div>
           )}
         </div>
       )}
 
-      {/* BLOQUE B — Matrícula */}
-      <div className="mb-4">
+      {/* BLOQUE B — Matrícula (solo cuando la métrica activa es matrícula) */}
+      {!esIndicador(metricaActiva) && <div className="mb-4">
         <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">
           Matrícula · {anio}
         </p>
@@ -309,6 +223,7 @@ export default function PanelProvincia({ provincia, datos, anio, nivel, onCerrar
         )}
       </div>
 
+      }
       <p className="text-xs text-slate-400 border-t border-slate-100 pt-3">
         Fuente: Ministerio de Educación de la Nación · RedFIE/DIE
       </p>
