@@ -1,5 +1,5 @@
-import { getResumenNacional } from "./lib/api";
 import MapaExplorador from "./components/MapaExplorador";
+import GraficoEvolucion from "./components/GraficoEvolucion";
 import { ArrowRight, Code, Database, Download } from "lucide-react";
 
 const SUBPROVINCIALES = ["GBA - Conurbano", "GBA - Resto Provincia"];
@@ -7,58 +7,63 @@ const SUBPROVINCIALES = ["GBA - Conurbano", "GBA - Resto Provincia"];
 async function getIndicadoresNacionales() {
   const BASE = "https://educacion-argentina-api.onrender.com/api/v1";
   try {
-    const [sobSec, repSec, abnSec] = await Promise.all([
-      fetch(`${BASE}/indicadores?indicador=SOB&nivel=SEC&anio=2024&anio_estudio=Total&limit=500`, { next: { revalidate: 3600 } }).then(r => r.json()),
-      fetch(`${BASE}/indicadores?indicador=REP&nivel=SEC&anio=2024&anio_estudio=Total&limit=500`, { next: { revalidate: 3600 } }).then(r => r.json()),
-      fetch(`${BASE}/indicadores?indicador=ABN&nivel=SEC&anio=2024&anio_estudio=Total&limit=500`, { next: { revalidate: 3600 } }).then(r => r.json()),
-    ]);
+    const abn = await fetch(
+      `${BASE}/indicadores?indicador=ABN&nivel=SEC&anio=2024&anio_estudio=Total&limit=500`,
+      { next: { revalidate: 3600 } }
+    ).then(r => r.json());
 
-    const promedio = (datos: { jurisdiccion: string; valor: number }[]) => {
-      const filtrados = datos.filter(d => !SUBPROVINCIALES.includes(d.jurisdiccion));
-      return filtrados.reduce((acc, d) => acc + d.valor, 0) / filtrados.length;
-    };
+    const filtrados = abn.datos.filter((d: { jurisdiccion: string; valor: number }) =>
+      !SUBPROVINCIALES.includes(d.jurisdiccion)
+    );
 
-    return {
-      sobSecPromedio: promedio(sobSec.datos),
-      repSecPromedio: promedio(repSec.datos),
-      abnSecPromedio: promedio(abnSec.datos),
-      repSecMax: Math.max(...repSec.datos.filter((d: { jurisdiccion: string }) => !SUBPROVINCIALES.includes(d.jurisdiccion)).map((d: { valor: number }) => d.valor)),
-    };
+    const promedio = filtrados.reduce((acc: number, d: { valor: number }) => acc + d.valor, 0) / filtrados.length;
+    const max = Math.max(...filtrados.map((d: { valor: number }) => d.valor));
+    const maxProv = filtrados.find((d: { valor: number; jurisdiccion: string }) => d.valor === max)?.jurisdiccion;
+    const min = Math.min(...filtrados.map((d: { valor: number }) => d.valor));
+    const minProv = filtrados.find((d: { valor: number; jurisdiccion: string }) => d.valor === min)?.jurisdiccion;
+
+    return { promedio, max, min, maxProv, minProv };
   } catch {
     return null;
   }
 }
 
 export default async function Home() {
-  const [resumen, indicadores] = await Promise.all([
-    getResumenNacional(2025).catch(() => null),
-    getIndicadoresNacionales(),
-  ]);
+  const ind = await getIndicadoresNacionales();
 
-  const sobPct = indicadores ? Math.round(indicadores.sobSecPromedio) : 22;
-  const abnPct = indicadores ? indicadores.abnSecPromedio.toFixed(1) : "8.1";
-  const repMax = indicadores ? indicadores.repSecMax.toFixed(1) : "15.8";
+  const unoDeCada = ind ? Math.round(100 / ind.promedio) : 12;
+  const maxProv = ind?.maxProv ?? "Misiones";
+  const minProv = ind?.minProv ?? "Neuquén";
 
   return (
     <div className="min-h-screen bg-white">
 
       {/* HERO */}
-      <section className="border-b border-slate-100 py-20 px-4">
+      <section className="border-b border-slate-100 py-24 px-4">
         <div className="max-w-7xl mx-auto">
-          <div className="max-w-3xl">
-            <div className="inline-flex items-center gap-2 bg-blue-50 text-blue-700 text-xs font-semibold px-3 py-1.5 rounded-full mb-6">
-              <span className="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
-              Datos del Ministerio de Educación · Anuario 2024
-            </div>
+          <div className="max-w-2xl">
+
             <h1 className="text-5xl md:text-6xl font-bold text-slate-900 leading-tight mb-6">
-              El sistema educativo<br />
-              <span style={{ color: "#1a3a6b" }}>argentino</span>, en datos.
+              Trayectorias escolares{" "}
+              <span style={{ color: "#1a3a6b" }}>en datos.</span>
             </h1>
-            <p className="text-xl text-slate-500 leading-relaxed mb-10 max-w-2xl">
-              Una plataforma abierta para entender qué pasa dentro de las escuelas argentinas.
-              Matrícula, repitencia, abandono y sobreedad por provincia, nivel y año.
+
+            <p className="text-xl text-slate-600 leading-relaxed mb-4">
+              En Argentina, la trayectoria teórica dice que un alumno entra a los 6 años
+              y termina la secundaria a los 17. Los datos muestran otra cosa.
             </p>
-            <div className="flex flex-wrap gap-3 mb-12">
+
+            <p className="text-xl font-semibold text-slate-900 leading-relaxed mb-2">
+              1 de cada {unoDeCada} alumnos de secundaria no vuelve al año siguiente.
+            </p>
+
+            <p className="text-base text-slate-500 leading-relaxed mb-10">
+              En {maxProv}, ese número es 1 de cada {ind ? Math.round(100 / ind.max) : 8}.
+              En {minProv}, es 1 de cada {ind ? Math.round(100 / ind.min) : 19}.
+              ¿Qué pasa en tu provincia?
+            </p>
+
+            <div className="flex flex-wrap gap-3">
               <a
                 href="#mapa"
                 className="inline-flex items-center gap-2 px-6 py-3 text-sm font-semibold text-white rounded-xl transition-all hover:opacity-90"
@@ -76,66 +81,29 @@ export default async function Home() {
               </a>
             </div>
 
-            {/* Tres datos impactantes */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="border-l-4 border-red-500 pl-4 py-1">
-                <p className="text-3xl font-bold text-slate-900">1 de cada {Math.round(100 / sobPct)}</p>
-                <p className="text-sm text-slate-500 mt-1 leading-snug">alumnos de secundaria tiene sobreedad — va atrasado respecto a su edad teórica</p>
-                <p className="text-xs text-slate-400 mt-2">Promedio nacional · 2024</p>
-              </div>
-              <div className="border-l-4 border-orange-400 pl-4 py-1">
-                <p className="text-3xl font-bold text-slate-900">{abnPct}%</p>
-                <p className="text-sm text-slate-500 mt-1 leading-snug">de los alumnos de secundaria no vuelve al año siguiente</p>
-                <p className="text-xs text-slate-400 mt-2">Promedio nacional · 2024</p>
-              </div>
-              <div className="border-l-4 border-amber-400 pl-4 py-1">
-                <p className="text-3xl font-bold text-slate-900">{repMax}%</p>
-                <p className="text-sm text-slate-500 mt-1 leading-snug">de repitencia en secundaria en la provincia con peor indicador del país</p>
-                <p className="text-xs text-slate-400 mt-2">Dato provincial máximo · 2024</p>
-              </div>
-            </div>
           </div>
         </div>
       </section>
 
-      {/* CONTEXTO — matrícula total */}
-      {resumen && (
-        <section className="bg-slate-50 border-b border-slate-100 py-10 px-4">
-          <div className="max-w-7xl mx-auto">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-4">El sistema en números · 2025</p>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-              {resumen.datos
-                .filter((d: { nivel: string; sector: string }) => d.sector === "Estatal" || d.sector === "Privado")
-                .reduce((acc: { nivel: string; total: number }[], d: { nivel: string; total_alumnos: number }) => {
-                  const existing = acc.find(a => a.nivel === d.nivel);
-                  if (existing) existing.total += d.total_alumnos;
-                  else acc.push({ nivel: d.nivel, total: d.total_alumnos });
-                  return acc;
-                }, [])
-                .map((d: { nivel: string; total: number }) => (
-                  <div key={d.nivel}>
-                    <p className="text-2xl font-bold text-slate-900">{d.total.toLocaleString("es-AR")}</p>
-                    <p className="text-sm text-slate-500 mt-1">{d.nivel.replace("Educacion ", "")}</p>
-                  </div>
-                ))
-              }
-            </div>
-            <p className="text-xs text-slate-400 mt-4">Fuente: Ministerio de Educación de la Nación. Excluye doble conteo de subregiones.</p>
-          </div>
-        </section>
-      )}
-
-      {/* MAPA INTERACTIVO */}
-      <section id="mapa" className="py-16 px-4 bg-white border-t border-slate-100">
+      {/* MAPA */}
+      <section id="mapa" className="py-16 px-4 bg-slate-50 border-t border-slate-100">
         <div className="max-w-7xl mx-auto">
           <div className="mb-8">
-            <h2 className="text-2xl font-bold text-slate-900">¿Dónde se pierde la escuela argentina?</h2>
+            <h2 className="text-2xl font-bold text-slate-900">
+              El mapa del abandono, la repitencia y la sobreedad
+            </h2>
             <p className="text-slate-500 mt-2 text-sm max-w-2xl">
-              Explorá repitencia, abandono y sobreedad por provincia y nivel educativo.
-              Hacé clic en una provincia para ver el detalle.
+              Seleccioná un indicador y hacé clic en una provincia para ver el detalle.
             </p>
           </div>
           <MapaExplorador />
+        </div>
+      </section>
+
+      {/* EVOLUCIÓN TEMPORAL */}
+      <section className="py-16 px-4 bg-white border-t border-slate-100">
+        <div className="max-w-7xl mx-auto">
+          <GraficoEvolucion />
         </div>
       </section>
 
@@ -145,8 +113,7 @@ export default async function Home() {
           <div className="mb-10">
             <h2 className="text-2xl font-bold text-slate-900">Accedé a los datos</h2>
             <p className="text-slate-500 mt-1 text-sm max-w-xl">
-              Todos los datos están disponibles via API REST pública y código abierto para que investigadores,
-              periodistas y desarrolladores puedan construir sobre esta base.
+              Todos los datos están disponibles via API REST pública y código abierto.
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
@@ -172,7 +139,7 @@ export default async function Home() {
               </div>
               <h3 className="font-semibold text-slate-900 mb-2">Código abierto</h3>
               <p className="text-slate-500 text-sm mb-4 leading-relaxed">
-                ETL, DDL y API disponibles en GitHub. Reproducible, auditable y contribuible por cualquier persona.
+                ETL, DDL y API disponibles en GitHub. Reproducible, auditable y contribuible.
               </p>
               <a
                 href="https://github.com/nahueldreher-star/educacion-argentina-data"
@@ -188,7 +155,7 @@ export default async function Home() {
               </div>
               <h3 className="font-semibold text-slate-900 mb-2">Serie histórica</h3>
               <p className="text-slate-500 text-sm mb-4 leading-relaxed">
-                Datos desde 2007 hasta 2025. Matrícula, repitencia, abandono, sobreedad y establecimientos por jurisdicción.
+                Datos desde 2007 hasta 2025. Matrícula, repitencia, abandono, sobreedad y establecimientos.
               </p>
               <a
                 href="https://educacion-argentina-api.onrender.com/api/v1/indicadores?indicador=SOB&nivel=SEC&anio_estudio=Total&limit=500"
@@ -199,6 +166,10 @@ export default async function Home() {
               </a>
             </div>
           </div>
+          <p className="text-xs text-slate-400 mt-8">
+            Fuente: Ministerio de Educación de la Nación · Relevamientos Anuales RedFIE/DIE.
+            Los indicadores de trayectoria se expresan como porcentaje sobre el total de matriculados.
+          </p>
         </div>
       </section>
 
