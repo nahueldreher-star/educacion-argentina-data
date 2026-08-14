@@ -1,4 +1,15 @@
-﻿# Sistema Educativo Argentino — API de Datos Abiertos
+# Sistema Educativo Argentino — API de Datos Abiertos
+
+## Qué muestra
+
+En Argentina la trayectoria teórica dice que un alumno entra a los 6 años y
+termina la secundaria a los 17. Los datos muestran otra cosa: **1 de cada 12
+alumnos de secundaria no vuelve al año siguiente**. En Misiones esa proporción
+es 1 de cada 8; en Neuquén, 1 de cada 19.
+
+Mapa interactivo: https://educacion-argentina-data.vercel.app
+
+*(Fuente: Ministerio de Educación de la Nación — Abandono interanual secundaria 2024)*
 
 API pública con datos de matrícula del sistema educativo argentino por nivel, sector y jurisdicción.
 
@@ -26,3 +37,8 @@ API pública con datos de matrícula del sistema educativo argentino por nivel, 
 ## Fuente
 
 Anuarios Estadísticos — Ministerio de Educación de la Nación (RedFIE).
+
+## Autor
+
+Nahuel Dreher — Analista de Datos & BI | Trabajo Social (UBA)
+[LinkedIn](https://www.linkedin.com/in/nahuel-dreher-00594a22a/)
